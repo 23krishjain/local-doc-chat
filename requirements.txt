@@ -1,0 +1,2 @@
+# PDF parsing only. Image CLI remains standard-library-only.
+pypdf==7.1.0

@@ -2,13 +2,15 @@
 
 A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
-only single-image Q&A through a local Ollama server is implemented. No PDF
-reader, document retrieval, web upload UI or multi-turn memory yet.
+single-image Q&A through a local Ollama server and text-PDF extraction with
+page-linked chunks are implemented. No document retrieval, PDF Q&A, OCR, web
+upload UI or multi-turn memory yet.
 
-## Day 1 status
+## Current status (Day 2)
 
-The Python HTTP client and CLI are implemented. Eleven tests pass against a local
-HTTP fixture, not a real model. **Actual vision inference, answer quality and
+The image HTTP client/CLI and text-PDF reader/chunker are implemented.
+29 tests pass: 11 image HTTP-fixture checks and 18 PDF/chunking checks.
+No test calls a real model. **Actual vision inference, answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
 ## Try it locally
@@ -28,6 +30,39 @@ A real run should be checked against that expected answer, not assumed correct.
 The CLI reports request wall time, including model loading when cold. Record
 GPU model, OS, Ollama version, model tag, context size and cold/warm state before
 comparing times. No result from a different machine proves laptop performance.
+
+## Read a text PDF (Day 2)
+
+Install the pinned PDF parser, then extract the included synthetic policy:
+
+```sh
+python -m pip install -r requirements.txt
+python -m docchat.pdf samples/policy.pdf
+python -m docchat.pdf samples/policy.pdf --chunk-size 500 --overlap 75
+```
+
+The command prints JSON to stdout without creating a stored copy. Each page has
+its physical 1-based PDF page number, extracted text and `text`/`no_text` status.
+Each chunk has the page number and exact character offsets within that extracted
+page text. Printed page labels may differ. Chunks never cross pages; a blank
+page is kept in the page list so later page references do not shift.
+
+`no_text` does not prove a page is scanned: it can also be blank, use unsupported
+text encodings, or contain only images. No OCR or vision call is made yet. A
+successful text extraction is not a question-answering result. Tables, columns,
+reading order and whitespace may be wrong; compare extracted text to the PDF.
+Fixed character chunks can split words and do not account for model token limits.
+
+Limits: 20MiB input, 100 pages, one million extracted characters. Encrypted PDFs
+are rejected. A failed read prints an error and exits nonzero without partial
+JSON. These limits are **not a security sandbox**: PDF parsing/decompression can
+consume resources before page/character checks run. Only use trusted local PDFs
+for now. An internet-facing upload service needs process isolation, time/memory
+limits and broader hostile-file testing before deployment. Redirecting stdout
+stores the full extracted document, so do not commit private output to Git.
+
+Synthetic sample checks: delivery fee is INR 40 on physical page 1; refund window
+is 7 days on page 2. `samples/policy.pdf` is not an actual business policy.
 
 ## Model and hardware
 
@@ -60,7 +95,7 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Text PDF extraction with page tracking; scanned-page rendering; retrieval over
+Scanned-page rendering; retrieval over
 chunks; grounded Q&A with source pages; a small evaluation set including absent
 answers; then a local upload/chat interface. Page citations are evidence to
 inspect, not proof the answer is true. Tests and daily notes live in `tests/`
