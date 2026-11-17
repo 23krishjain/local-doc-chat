@@ -22,6 +22,12 @@ Run its local server, then in another terminal:
 ```sh
 ollama pull qwen2.5vl:7b
 python -m docchat samples/receipt.png 'What is the total on this receipt?'
+```
+
+Run the full test suite after installing rendering/PDF dependencies:
+
+```sh
+python -m pip install -r requirements-render.txt
 python -m unittest discover -s tests -v
 ```
 
