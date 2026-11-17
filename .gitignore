@@ -4,3 +4,6 @@ __pycache__/
 .env
 uploads/
 models/
+# Rendered pages can contain private document data.
+rendered*/
+.docchat-*/

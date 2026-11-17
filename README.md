@@ -3,13 +3,13 @@
 A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
-page-linked chunks are implemented. No document retrieval, PDF Q&A, OCR, web
+page-linked chunks plus PDF-to-PNG rendering are implemented. No document retrieval, PDF Q&A, OCR, web
 upload UI or multi-turn memory yet.
 
-## Current status (Day 2)
+## Current status (Day 3)
 
-The image HTTP client/CLI and text-PDF reader/chunker are implemented.
-29 tests pass: 11 image HTTP-fixture checks and 18 PDF/chunking checks.
+The image HTTP client/CLI, text-PDF reader/chunker and page renderer are implemented.
+42 tests pass: 11 image HTTP-fixture, 18 PDF/chunking and 13 actual-rendering checks.
 No test calls a real model. **Actual vision inference, answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
@@ -64,6 +64,40 @@ stores the full extracted document, so do not commit private output to Git.
 Synthetic sample checks: delivery fee is INR 40 on physical page 1; refund window
 is 7 days on page 2. `samples/policy.pdf` is not an actual business policy.
 
+## Render PDF pages (Day 3)
+
+Install optional rendering dependencies (PDFium/Pillow), then choose pages:
+
+```sh
+python -m pip install -r requirements-render.txt
+python -m docchat.render samples/scanned-receipt.pdf rendered-scan --dpi 120
+python -m docchat.render samples/policy.pdf rendered-policy --pages 2 --dpi 100
+```
+
+Output is a new directory with `page-0001.png`-style filenames and `manifest.json`.
+The manifest records the exact input SHA-256, physical page number, DPI, image
+dimensions and text status. The source PDF is not copied into the final output.
+Existing output paths are refused; choose a different name for another run.
+Do not run concurrent writers to the same output path.
+
+You can pass a rendered PNG into the Day 1 image client:
+
+```sh
+python -m docchat rendered-scan/page-0001.png 'What is the total on this receipt?'
+```
+
+This last command needs an actual local Ollama model. **It has not been verified
+against a real model.** Expected sample answer: INR 180. Rendering is verified;
+recognising/answering from the image is a separate open check.
+
+Defaults: DPI 120 (allowed 36-200), at most four million pixels per page and
+twenty million total. Lower DPI or select fewer pages if the budget is exceeded.
+These are bitmap guardrails, not parser isolation. Only trusted local files.
+The reader validates/extracts every page before rendering selected pages, which
+can be expensive. No OCR or automatic scan detection. Output images contain the
+source content; keep private renders out of Git. pypdfium2 and PDFium dependency
+licenses/notices are separate from this repo's MIT license. See day-03 notes.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -95,7 +129,7 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Scanned-page rendering; retrieval over
+Retrieval over
 chunks; grounded Q&A with source pages; a small evaluation set including absent
 answers; then a local upload/chat interface. Page citations are evidence to
 inspect, not proof the answer is true. Tests and daily notes live in `tests/`
