@@ -3,14 +3,16 @@
 A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
-page-linked chunks plus PDF-to-PNG rendering are implemented. No document retrieval, PDF Q&A, OCR, web
+page-linked chunks plus PDF-to-PNG rendering and dense text retrieval are implemented. No generated PDF answers, OCR, web
 upload UI or multi-turn memory yet.
 
-## Current status (Day 3)
+## Current status (Day 4)
 
 The image HTTP client/CLI, text-PDF reader/chunker and page renderer are implemented.
-42 tests pass: 11 image HTTP-fixture, 18 PDF/chunking and 13 actual-rendering checks.
-No test calls a real model. **Actual vision inference, answer quality and
+51 tests pass: the prior 42 image/PDF/rendering checks plus nine retrieval checks.
+A separate real CPU text-embedding smoke test retrieved the expected page for
+6/6 questions on a two-page synthetic sample. That is not general accuracy.
+Unit tests do not call a model; the separate retrieval evaluation does. **Actual vision/chat inference, answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
 ## Try it locally
@@ -27,7 +29,7 @@ python -m docchat samples/receipt.png 'What is the total on this receipt?'
 Run the full test suite after installing rendering/PDF dependencies:
 
 ```sh
-python -m pip install -r requirements-render.txt
+python -m pip install -r requirements-render.txt -r requirements-search.txt
 python -m unittest discover -s tests -v
 ```
 
@@ -104,6 +106,35 @@ can be expensive. No OCR or automatic scan detection. Output images contain the
 source content; keep private renders out of Git. pypdfium2 and PDFium dependency
 licenses/notices are separate from this repo's MIT license. See day-03 notes.
 
+## Search text evidence (Day 4)
+
+```sh
+python -m pip install -r requirements-search.txt
+python -m docchat.search samples/policy.pdf 'How long do I have to ask for my money back?' --k 1
+# After the first model download, use cache-only mode:
+python -m docchat.search samples/policy.pdf 'What does shipping cost?' --offline
+python eval/retrieval_check.py --offline
+```
+
+The small English all-MiniLM-L6-v2 ONNX encoder runs on CPU via FastEmbed; it is
+not the Qwen vision model. First use downloads model files (about 90MB according
+to FastEmbed's registry). Local document text is embedded on-device, not sent to
+a hosted inference API. `--cache-dir PATH` selects storage; `--offline` refuses
+network model loading and fails if needed files are missing. Weights are not
+bundled. Both original model and ONNX artifact metadata list Apache-2.0.
+
+Results are nearest evidence with page/character offsets, not an answer. Cosine
+scores are not confidence probabilities. Even an unrelated question gets a
+nearest page: there is no calibrated abstention yet. Scan-only PDFs return no
+text matches; rendering alone does not add their content to the text index.
+The encoder limit is 256 tokens; overlong chunks/queries are rejected, not
+silently truncated. Use smaller chunks through the Python API if necessary.
+Current CLI rebuilds an in-memory index each time, capped at 2000 chunks.
+
+The real-model smoke test's 6/6 page hits are on only two synthetic pages. Two
+absent-answer questions still return irrelevant nearest pages. See eval/ for
+cases/results; no general retrieval or generated-answer accuracy is claimed.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -135,8 +166,7 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Retrieval over
-chunks; grounded Q&A with source pages; a small evaluation set including absent
+Grounded Q&A with source pages; a small evaluation set including absent
 answers; then a local upload/chat interface. Page citations are evidence to
 inspect, not proof the answer is true. Tests and daily notes live in `tests/`
 and `docs/`. Actual model evaluation remains an open requirement.

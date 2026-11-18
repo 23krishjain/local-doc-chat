@@ -7,3 +7,5 @@ models/
 # Rendered pages can contain private document data.
 rendered*/
 .docchat-*/
+# Downloaded model files never belong in source control.
+.cache/
