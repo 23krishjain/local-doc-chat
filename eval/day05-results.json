@@ -1,0 +1,68 @@
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "source_sha256": "59d8c784ad745e3ff0e7aac0af411c671c0a90ae2b9dc08e455d5b442f091e16",
+  "min_score": 0.34,
+  "answered_ok": 6,
+  "answerable": 6,
+  "abstained_ok": 2,
+  "absent": 2,
+  "results": [
+    {
+      "question": "How much does regular shipping cost?",
+      "page": 1,
+      "status": "answered",
+      "top_score": 0.363791,
+      "ok": true
+    },
+    {
+      "question": "When do orders qualify for delivery without a charge?",
+      "page": 1,
+      "status": "answered",
+      "top_score": 0.524213,
+      "ok": true
+    },
+    {
+      "question": "Which days can my order be delivered?",
+      "page": 1,
+      "status": "answered",
+      "top_score": 0.401941,
+      "ok": true
+    },
+    {
+      "question": "How long do I have to ask for my money back?",
+      "page": 2,
+      "status": "answered",
+      "top_score": 0.617527,
+      "ok": true
+    },
+    {
+      "question": "Where is an approved refund sent?",
+      "page": 2,
+      "status": "answered",
+      "top_score": 0.555088,
+      "ok": true
+    },
+    {
+      "question": "What hours can I contact support?",
+      "page": 2,
+      "status": "answered",
+      "top_score": 0.489752,
+      "ok": true
+    },
+    {
+      "question": "What is the CEO's birthday?",
+      "page": null,
+      "status": "insufficient_evidence",
+      "top_score": 0.098484,
+      "ok": true
+    },
+    {
+      "question": "What is the shop's phone number?",
+      "page": null,
+      "status": "insufficient_evidence",
+      "top_score": 0.290118,
+      "ok": true
+    }
+  ],
+  "limit": "Threshold tuned on these 8 synthetic questions over 2 pages; scores are not calibrated confidence and other corpora need retuning. Extractive quotes only; no generated-answer quality measured."
+}

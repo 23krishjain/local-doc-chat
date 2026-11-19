@@ -3,16 +3,20 @@
 A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
-page-linked chunks plus PDF-to-PNG rendering and dense text retrieval are implemented. No generated PDF answers, OCR, web
-upload UI or multi-turn memory yet.
+page-linked chunks plus PDF-to-PNG rendering, dense text retrieval and cited
+evidence-gated extractive answers are implemented. No generated PDF answers,
+OCR, web upload UI or multi-turn memory yet.
 
-## Current status (Day 4)
+## Current status (Day 5)
 
-The image HTTP client/CLI, text-PDF reader/chunker and page renderer are implemented.
-51 tests pass: the prior 42 image/PDF/rendering checks plus nine retrieval checks.
-A separate real CPU text-embedding smoke test retrieved the expected page for
-6/6 questions on a two-page synthetic sample. That is not general accuracy.
-Unit tests do not call a model; the separate retrieval evaluation does. **Actual vision/chat inference, answer quality and
+The image HTTP client/CLI, text-PDF reader/chunker, page renderer, dense text
+retrieval and an evidence-gated cited answer layer are implemented.
+62 tests pass: the prior 51 image/PDF/rendering/retrieval checks plus eleven
+gate and citation checks. Separate real CPU embedding evaluations retrieved the
+expected page for 6/6 answerable questions and abstained on 2/2 absent-answer
+questions on a two-page synthetic sample, using a fixture-tuned threshold. That
+is not general accuracy or calibrated confidence.
+Unit tests do not call a model; the separate evaluations do. **Actual vision/chat inference, generated answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
 ## Try it locally
@@ -135,6 +139,27 @@ The real-model smoke test's 6/6 page hits are on only two synthetic pages. Two
 absent-answer questions still return irrelevant nearest pages. See eval/ for
 cases/results; no general retrieval or generated-answer accuracy is claimed.
 
+## Cited answers or abstention (Day 5)
+
+```sh
+python -m docchat.answer samples/policy.pdf 'How long do I have to ask for my money back?'
+python -m docchat.answer samples/policy.pdf "What is the CEO's birthday?" --offline
+python eval/abstention_check.py --offline
+```
+
+`docchat.answer` returns the exact retrieved passage with page/character
+citations and the source SHA-256 when the top match clears `--min-score`
+(default 0.34); otherwise it abstains with `insufficient_evidence` and labels
+the nearest passages as below threshold. It never invents text: the excerpt is
+always the exact retrieved chunk, and citations are validated against the
+retrieved set and source bytes before output. This is extractive evidence with
+provenance, not a generated answer and not proof the passage is true.
+
+The 0.34 default only separates the included 8-question, two-page synthetic
+fixture (lowest answerable score 0.364, highest absent 0.290). Cosine scores
+are not probabilities; retune per corpus and model before relying on any
+threshold. The gate separates this sample, nothing more.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -166,10 +191,11 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Grounded Q&A with source pages; a small evaluation set including absent
-answers; then a local upload/chat interface. Page citations are evidence to
-inspect, not proof the answer is true. Tests and daily notes live in `tests/`
-and `docs/`. Actual model evaluation remains an open requirement.
+Grounded extractive Q&A with source pages and abstention is in. Next: a local
+upload/chat interface, then generated answers grounded in validated citations
+once a chat/vision model run is actually verified. Page citations are evidence
+to inspect, not proof the answer is true. Tests and daily notes live in
+`tests/` and `docs/`. Actual model evaluation remains an open requirement.
 
 ## Sources
 
