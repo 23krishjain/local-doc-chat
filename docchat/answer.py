@@ -70,6 +70,39 @@ def build_answer(question, matches, source_sha256, min_score=DEFAULT_MIN_SCORE):
             'min_score': threshold}
 
 
+def answer_bytes(data, question, *, min_score=DEFAULT_MIN_SCORE, k=3,
+                 cache_dir=None, offline=False):
+    """Run the cited-answer pipeline over bounded PDF bytes already in memory.
+    Shared by the CLI and the loopback web UI."""
+    threshold = check_min_score(min_score)
+    if not question.strip():
+        raise ValueError('question must not be blank')
+    if type(k) is not int or not 1 <= k <= 20:
+        raise ValueError('k must be an integer from 1 to 20')
+    if len(data) > 20 * 1024 * 1024:
+        raise DocumentError('PDF exceeds the input size limit')
+    # Hash and parse the same bounded bytes, not a path that may change.
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix='docchat-answer-') as tmp:
+        snapshot = Path(tmp) / 'source.pdf'
+        snapshot.write_bytes(data)
+        pages = read_pdf(snapshot)
+    chunks = chunk_pages(pages, size=500, overlap=75)
+    if len(chunks) > 2000:
+        raise DocumentError('too many chunks for this small in-memory index')
+    embedder = LocalEmbedder(cache_dir, offline) if chunks else None
+    matches = Index(chunks, embedder).search(question, k)
+    digest = hashlib.sha256(data).hexdigest()
+    answer = build_answer(question, matches, digest, threshold)
+    for citation in answer['citations']:
+        if not is_valid_citation(Citation(**citation), matches, digest):
+            raise RuntimeError('internal citation failed validation')
+    return {'source_sha256': digest, 'model': MODEL, 'chunks': len(chunks),
+            **answer,
+            'no_text_pages': [p.page for p in pages if p.status == 'no_text'],
+            'warning': 'Extractive passage quotes with provenance, not a generated answer. The abstention threshold is fixture-tuned, not calibrated confidence.'}
+
+
 def main():
     parser = argparse.ArgumentParser(description='Answer from PDF evidence with page citations, or abstain when evidence is weak. Extractive only; no generative model is used.')
     parser.add_argument('pdf')
@@ -82,31 +115,12 @@ def main():
     if not args.question.strip() or not 1 <= args.k <= 20:
         parser.error('provide a nonblank question and k between 1 and 20')
     try:
-        threshold = check_min_score(args.min_score)
-        # Hash and parse the same bounded bytes, not a path that may change.
         source = Path(args.pdf)
         with source.open('rb') as stream:
             data = stream.read(20 * 1024 * 1024 + 1)
-        if len(data) > 20 * 1024 * 1024:
-            raise DocumentError('PDF exceeds the input size limit')
-        import tempfile
-        with tempfile.TemporaryDirectory(prefix='docchat-answer-') as tmp:
-            snapshot = Path(tmp) / 'source.pdf'; snapshot.write_bytes(data)
-            pages = read_pdf(snapshot)
-        chunks = chunk_pages(pages, size=500, overlap=75)
-        if len(chunks) > 2000:
-            raise DocumentError('too many chunks for this small in-memory index')
-        embedder = LocalEmbedder(args.cache_dir, args.offline) if chunks else None
-        matches = Index(chunks, embedder).search(args.question, args.k)
-        digest = hashlib.sha256(data).hexdigest()
-        answer = build_answer(args.question, matches, digest, threshold)
-        for citation in answer['citations']:
-            if not is_valid_citation(Citation(**citation), matches, digest):
-                raise RuntimeError('internal citation failed validation')
-        result = {'source_sha256': digest, 'model': MODEL,
-                  'chunks': len(chunks), **answer,
-                  'no_text_pages': [p.page for p in pages if p.status == 'no_text'],
-                  'warning': 'Extractive passage quotes with provenance, not a generated answer. The abstention threshold is fixture-tuned, not calibrated confidence.'}
+        result = answer_bytes(data, args.question, min_score=args.min_score,
+                              k=args.k, cache_dir=args.cache_dir,
+                              offline=args.offline)
     except (DocumentError, OSError, ValueError, RuntimeError, ImportError) as exc:
         print(f'Answer failed ({type(exc).__name__}); check the PDF, dependencies and model cache. No partial results produced.', file=sys.stderr)
         return 1

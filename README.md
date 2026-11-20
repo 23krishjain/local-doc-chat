@@ -3,19 +3,19 @@
 A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
-page-linked chunks plus PDF-to-PNG rendering, dense text retrieval and cited
-evidence-gated extractive answers are implemented. No generated PDF answers,
-OCR, web upload UI or multi-turn memory yet.
+page-linked chunks, PDF-to-PNG rendering, dense text retrieval, cited
+evidence-gated extractive answers and a loopback-only web UI are implemented.
+No generated PDF answers, OCR, public server or multi-turn memory yet.
 
-## Current status (Day 5)
+## Current status (Day 6)
 
 The image HTTP client/CLI, text-PDF reader/chunker, page renderer, dense text
-retrieval and an evidence-gated cited answer layer are implemented.
-62 tests pass: the prior 51 image/PDF/rendering/retrieval checks plus eleven
-gate and citation checks. Separate real CPU embedding evaluations retrieved the
-expected page for 6/6 answerable questions and abstained on 2/2 absent-answer
-questions on a two-page synthetic sample, using a fixture-tuned threshold. That
-is not general accuracy or calibrated confidence.
+retrieval, evidence-gated cited answers and a loopback-only web UI are
+implemented. 73 tests pass: the prior 62 checks plus eight HTTP checks and
+three pipeline-byte checks. Separate real CPU embedding evaluations retrieved
+the expected page for 6/6 answerable questions and abstained on 2/2
+absent-answer questions on a two-page synthetic sample, using a fixture-tuned
+threshold. That is not general accuracy or calibrated confidence.
 Unit tests do not call a model; the separate evaluations do. **Actual vision/chat inference, generated answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
@@ -160,6 +160,22 @@ fixture (lowest answerable score 0.364, highest absent 0.290). Cosine scores
 are not probabilities; retune per corpus and model before relying on any
 threshold. The gate separates this sample, nothing more.
 
+## Local web UI (Day 6)
+
+```sh
+python -m docchat.web --port 8765
+# then open http://127.0.0.1:8765 in a browser on the same machine
+```
+
+Binds loopback only and refuses any other host. The page posts raw PDF bytes to
+the same process (`POST /ask?q=...`) and shows the cited extractive answer or
+`insufficient_evidence`. No authentication, TLS or network hardening: it is a
+single-user local tool for trusted inputs, not a server to expose. The index is
+rebuilt per question (stateless, capped at 2000 chunks), so large documents are
+slow. Errors return the exception type only, not internals. The HTML is a
+minimal fetch-driven form; markup was checked from served bytes, not
+pixel-rendered.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -191,11 +207,12 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Grounded extractive Q&A with source pages and abstention is in. Next: a local
-upload/chat interface, then generated answers grounded in validated citations
-once a chat/vision model run is actually verified. Page citations are evidence
-to inspect, not proof the answer is true. Tests and daily notes live in
-`tests/` and `docs/`. Actual model evaluation remains an open requirement.
+Grounded extractive Q&A with source pages, abstention and a local web UI are
+in. Next: multi-document indexing with persistence, or generated answers
+grounded in validated citations once a chat/vision model run is actually
+verified. Page citations are evidence to inspect, not proof the answer is true.
+Tests and daily notes live in `tests/` and `docs/`. Actual model evaluation
+remains an open requirement.
 
 ## Sources
 

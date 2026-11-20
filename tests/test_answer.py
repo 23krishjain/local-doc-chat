@@ -1,7 +1,9 @@
 import math
 import unittest
-from docchat.answer import (Citation, build_answer, check_min_score,
-                            citation_for, is_valid_citation)
+from docchat.answer import (Citation, answer_bytes, build_answer,
+                            check_min_score, citation_for, is_valid_citation)
+from docchat.pdf import DocumentError
+from pdf_fixtures import make_pdf
 from docchat.search import Match
 
 HASH = 'a' * 64
@@ -76,6 +78,28 @@ class CitationTests(unittest.TestCase):
 
     def test_rejects_non_citation(self):
         self.assertFalse(is_valid_citation({'page': 1}, [match(0.5)], HASH))
+
+
+class AnswerBytesTests(unittest.TestCase):
+    def test_no_text_pdf_abstains_without_model(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'blank.pdf'
+            make_pdf(path, [None])
+            out = answer_bytes(path.read_bytes(), 'anything?')
+        self.assertEqual(out['status'], 'insufficient_evidence')
+        self.assertEqual(out['chunks'], 0)
+        self.assertEqual(out['no_text_pages'], [1])
+
+    def test_oversize_input_rejected_before_parsing(self):
+        with self.assertRaises(DocumentError):
+            answer_bytes(b'x' * (20 * 1024 * 1024 + 1), 'q')
+
+    def test_bad_k_rejected(self):
+        for k in [0, 21, True, '3']:
+            with self.subTest(k=k), self.assertRaises(ValueError):
+                answer_bytes(b'%PDF', 'q', k=k)
 
 
 if __name__ == '__main__':
