@@ -19,6 +19,7 @@ class Match:
     end: int
     text: str
     score: float  # cosine similarity, NOT a probability or confidence
+    source: str = ''  # owning document hash, when the chunk carries one
 
 
 def unit(vector):
@@ -59,10 +60,13 @@ class LocalEmbedder:
 
 
 class Index:
-    def __init__(self, chunks, embedder):
+    def __init__(self, chunks, embedder=None, vectors=None):
         self.chunks = tuple(chunks)
         self.embedder = embedder
-        vectors = embedder.embed([c.text for c in self.chunks]) if self.chunks else []
+        if vectors is None:
+            if self.chunks and embedder is None:
+                raise ValueError('an embedder or precomputed vectors are required')
+            vectors = embedder.embed([c.text for c in self.chunks]) if self.chunks else []
         if len(vectors) != len(self.chunks):
             raise ValueError('embedding count does not match chunks')
         self.vectors = tuple(unit(v) for v in vectors)
@@ -89,7 +93,8 @@ class Index:
         for i, v in ranked[:k]:
             c = self.chunks[i]
             result.append(Match(c.page, c.start, c.end, c.text,
-                                max(-1.0, min(1.0, sum(a*b for a,b in zip(query,v))))))
+                                max(-1.0, min(1.0, sum(a*b for a,b in zip(query,v)))),
+                                getattr(c, 'source', '')))
         return result
 
 
@@ -114,12 +119,13 @@ def main():
         with tempfile.TemporaryDirectory(prefix='docchat-search-') as tmp:
             snapshot = Path(tmp) / 'source.pdf'; snapshot.write_bytes(data)
             pages = read_pdf(snapshot)
-        chunks = chunk_pages(pages, size=500, overlap=75)
+        digest = hashlib.sha256(data).hexdigest()
+        chunks = chunk_pages(pages, size=500, overlap=75, source=digest)
         if len(chunks) > 2000:
             raise DocumentError('too many chunks for this small in-memory index')
         embedder = LocalEmbedder(args.cache_dir, args.offline) if chunks else None
         matches = Index(chunks, embedder).search(args.question, args.k)
-        result = {'source_sha256': hashlib.sha256(data).hexdigest(), 'model': MODEL,
+        result = {'source_sha256': digest, 'model': MODEL,
                   'chunks': len(chunks), 'matches': [asdict(m) for m in matches],
                   'no_text_pages': [p.page for p in pages if p.status == 'no_text'],
                   'warning': 'Nearest evidence only. Scores are not confidence. Results can be irrelevant when the answer is absent.'}

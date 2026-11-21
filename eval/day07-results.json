@@ -1,0 +1,27 @@
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "policy": {
+    "sha": "59d8c784ad745e3ff0e7aac0af411c671c0a90ae2b9dc08e455d5b442f091e16",
+    "chunks": 2,
+    "embedded_first": true,
+    "reused_on_readd": true
+  },
+  "scanned_receipt": {
+    "sha": "c0b13e5784ef71638c2417a3f89189e409194642c3975edfa6a643cb9257fb79",
+    "chunks": 0,
+    "no_text_pages": [
+      1
+    ]
+  },
+  "answered": {
+    "status": "answered",
+    "cited_sha": "59d8c784ad745e3ff0e7aac0af411c671c0a90ae2b9dc08e455d5b442f091e16",
+    "cited_page": 2,
+    "ok": true
+  },
+  "absent": {
+    "status": "insufficient_evidence",
+    "ok": true
+  },
+  "limit": "Two synthetic sample documents only; proves plumbing and provenance, not general accuracy. Threshold fixture-tuned."
+}

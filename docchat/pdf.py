@@ -26,6 +26,7 @@ class Chunk:
     start: int  # character offset in extracted page text, inclusive
     end: int  # exclusive
     text: str
+    source: str = ''  # SHA-256 of the owning document's bytes, when known
 
 
 def read_pdf(path, *, max_bytes=20 * 1024 * 1024, max_pages=100,
@@ -72,7 +73,7 @@ def read_pdf(path, *, max_bytes=20 * 1024 * 1024, max_pages=100,
         raise DocumentError('PDF could not be parsed; it may be damaged or unsupported') from exc
 
 
-def chunk_pages(pages, *, size=1000, overlap=150):
+def chunk_pages(pages, *, size=1000, overlap=150, source=''):
     """Fixed character chunks, never crossing a physical page.
 
     Offsets refer to the exact extracted text. Character counts are not tokens.
@@ -89,7 +90,7 @@ def chunk_pages(pages, *, size=1000, overlap=150):
             end = min(start + size, len(page.text))
             text = page.text[start:end]
             if text.strip():
-                chunks.append(Chunk(page.page, start, end, text))
+                chunks.append(Chunk(page.page, start, end, text, source))
             if end == len(page.text):
                 break
             start = end - overlap

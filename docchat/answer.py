@@ -36,8 +36,11 @@ def check_min_score(min_score):
 def citation_for(match, source_sha256):
     if not isinstance(match, Match):
         raise ValueError('citation source must be a retrieved Match')
+    # Multi-document matches carry their own document hash; single-document
+    # callers pass it explicitly. Never invent a source.
+    source = match.source if getattr(match, 'source', '') else source_sha256
     return Citation(match.page, match.start, match.end, match.text,
-                    match.score, source_sha256)
+                    match.score, source)
 
 
 def is_valid_citation(citation, matches, source_sha256):
