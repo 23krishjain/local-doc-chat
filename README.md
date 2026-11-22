@@ -4,21 +4,22 @@ A local image and document Q&A project, built one step at a time.
 The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
 page-linked chunks, PDF-to-PNG rendering, dense text retrieval, cited
-evidence-gated extractive answers, a loopback-only web UI and a
-content-addressed multi-document library are implemented. No generated PDF
-answers, OCR, public server or multi-turn memory yet.
+evidence-gated extractive answers, a loopback-only web UI, a
+content-addressed multi-document library and a library-aware web UI are
+implemented. No generated PDF answers, OCR, public server or multi-turn memory
+yet.
 
-## Current status (Day 7)
+## Current status (Day 8)
 
 The image HTTP client/CLI, text-PDF reader/chunker, page renderer, dense text
-retrieval, evidence-gated cited answers, loopback-only web UI and
-multi-document library are implemented. 85 tests pass: the prior 73 checks
-plus twelve library and provenance checks. Separate real CPU embedding
+retrieval, evidence-gated cited answers, loopback-only web UI, multi-document
+library and library-aware web UI are implemented. 98 tests pass: the prior 85
+checks plus thirteen library web-UI checks. Separate real CPU embedding
 evaluations retrieved the expected page for 6/6 answerable questions and
 abstained on 2/2 absent-answer questions on a two-page synthetic sample, and a
-two-document library run cited the owning document by content hash, using a
-fixture-tuned threshold. That is not general accuracy or calibrated
-confidence.
+two-document library run (CLI and HTTP) cited the owning document by content
+hash, using a fixture-tuned threshold. That is not general accuracy or
+calibrated confidence.
 Unit tests do not call a model; the separate evaluations do. **Actual vision/chat inference, generated answer quality and
 hardware performance have not been verified.** No benchmark results are claimed.
 
@@ -200,6 +201,30 @@ index is capped at 5000 chunks across all documents. Scan-only PDFs still
 contribute no text chunks. The store is a directory of JSON files, not a
 database; no concurrency hardening for simultaneous writers.
 
+## Library web UI (Day 8)
+
+```sh
+python -m docchat.web --library .docchat-library --port 8765
+# then open http://127.0.0.1:8765 in a browser on the same machine
+```
+
+With `--library STORE` the loopback web UI serves the persistent
+multi-document library instead of single-upload mode. The page adds PDFs once
+(`POST /library/add`), lists stored documents with page/chunk counts and
+no-text-page flags (`GET /documents`), and asks across all of them
+(`POST /library/ask?q=...&k=...`, k from 1 to 20). Answers carry the same
+evidence gate as the CLI: each citation names its owning document by SHA-256,
+and a question without clearing evidence returns `insufficient_evidence`.
+Adding an unchanged document reuses its validated cache instead of
+re-embedding. Library operations are serialized with a lock; the shared
+embedder and cache files are not thread-safe. The single-upload `/ask` route
+is not served in library mode. Same boundaries as Day 6: loopback only, no
+authentication, TLS or network hardening, trusted local inputs only, and error
+responses return the exception type only. The page renders raw JSON answers;
+the document list is rendered as text lines. This page was pixel-verified in a
+headless browser (list, answered and abstained states). Offline real-model
+HTTP checks are in `eval/web_library_check.py` and `eval/day08-results.json`.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -231,10 +256,10 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 
 ## Next steps
 
-Grounded extractive Q&A with source pages, abstention, a local web UI and a
-multi-document library are in. Next: library-aware web UI, or generated answers
-grounded in validated citations once a chat/vision model run is actually
-verified. Page citations are evidence to inspect, not proof the answer is true.
+Grounded extractive Q&A with source pages, abstention, a local web UI, a
+multi-document library and a library-aware web UI are in. Next: OCR for
+scan-only pages so they join the text index, or generated answers grounded in
+validated citations once a chat/vision model run is actually verified. Page citations are evidence to inspect, not proof the answer is true.
 Tests and daily notes live in `tests/` and `docs/`. Actual model evaluation
 remains an open requirement.
 

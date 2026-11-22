@@ -1,0 +1,25 @@
+{
+  "policy_add": {
+    "http": 200,
+    "embedded": true,
+    "chunks": 2
+  },
+  "policy_readd_uses_cache": true,
+  "scanned_receipt_add": {
+    "http": 200,
+    "chunks": 0,
+    "no_text_pages": [
+      1
+    ]
+  },
+  "documents_listed": true,
+  "cross_doc_ask": {
+    "http": 200,
+    "status": "answered",
+    "documents": 2,
+    "cited_correct_document": true,
+    "cited_page": 2
+  },
+  "absent_question_abstained": true,
+  "passed": true
+}
