@@ -37,7 +37,8 @@ def check_hash(value):
 
 
 class Library:
-    def __init__(self, store_dir, embedder=None, cache_dir=None, offline=False):
+    def __init__(self, store_dir, embedder=None, cache_dir=None, offline=False, ocr=False):
+        self.ocr = ocr
         self.store = Path(store_dir)
         self._embedder = embedder
         self.cache_dir = cache_dir
@@ -89,7 +90,9 @@ class Library:
             chunks.append(Chunk(page, start, end, text, sha))
         meta = {'version': CACHE_VERSION, 'model': MODEL, 'source_sha256': sha,
                 'pages': payload.get('pages'),
-                'no_text_pages': payload.get('no_text_pages') or []}
+                'no_text_pages': payload.get('no_text_pages') or [],
+                'ocr_pages': payload.get('ocr_pages') or [],
+                'extraction': payload.get('extraction', 'text')}
         return {'meta': meta, 'chunks': chunks, 'vectors': vectors}
 
     def _cached_chunk_total(self):
@@ -113,17 +116,29 @@ class Library:
             snapshot = Path(tmp) / 'source.pdf'
             snapshot.write_bytes(data)
             pages = read_pdf(snapshot)
+            ocr_pages = []
+            if self.ocr:
+                from .ocr import fill_textless_pages
+                pages, ocr_pages = fill_textless_pages(snapshot, pages)
         chunks = chunk_pages(pages, size=500, overlap=75, source=digest)
         meta = {'version': CACHE_VERSION, 'model': MODEL, 'source_sha256': digest,
                 'pages': len(pages),
+                'extraction': 'tesseract-eng-v1' if self.ocr else 'text',
+                'ocr_pages': ocr_pages,
                 'no_text_pages': [p.page for p in pages if p.status == 'no_text']}
-        if not self._path(digest).exists() \
-                and self._cached_chunk_total() + len(chunks) > MAX_TOTAL_CHUNKS:
+        old_count = 0
+        try:
+            old_count = len(self._read_cache(self._path(digest))['chunks'])
+        except CacheMiss:
+            pass
+        if self._cached_chunk_total() - old_count + len(chunks) > MAX_TOTAL_CHUNKS:
             raise DocumentError('library exceeds the total chunk limit')
         try:
-            cached = self._read_cache(self._path(digest))['chunks']
-            if [(c.page, c.start, c.end, c.text) for c in cached] == \
-               [(c.page, c.start, c.end, c.text) for c in chunks]:
+            cache = self._read_cache(self._path(digest))
+            cached = cache['chunks']
+            if (cache['meta']['extraction'] == meta['extraction']
+                    and [(c.page, c.start, c.end, c.text) for c in cached] ==
+                    [(c.page, c.start, c.end, c.text) for c in chunks]):
                 return dict(meta, chunks=len(chunks), embedded=False)
         except (CacheMiss, OSError):
             pass
@@ -132,7 +147,8 @@ class Library:
             raw = self.embedder().embed([c.text for c in chunks])
             if len(raw) != len(chunks):
                 raise RuntimeError('embedding count does not match chunks')
-            vectors = [[float(x) for x in v] for v in raw]
+            vectors = [list(unit(v)) for v in raw]
+            Index(chunks, vectors=vectors)
         self.store.mkdir(parents=True, exist_ok=True)
         payload = dict(meta, chunks=[{'page': c.page, 'start': c.start,
                                       'end': c.end, 'text': c.text, 'vector': v}
@@ -165,7 +181,8 @@ class Library:
             result.append({'source_sha256': path.stem,
                            'pages': data['meta']['pages'],
                            'chunks': len(data['chunks']),
-                           'no_text_pages': data['meta']['no_text_pages']})
+                           'no_text_pages': data['meta']['no_text_pages'],
+                           'ocr_pages': data['meta']['ocr_pages']})
         return result
 
     def index(self, embedder=None):
@@ -197,7 +214,9 @@ class Library:
 
     def ask(self, question, min_score=DEFAULT_MIN_SCORE, k=3):
         threshold = check_min_score(min_score)
-        index = self.index(self.embedder())
+        index = self.index()
+        if index.chunks:
+            index.embedder = self.embedder()
         matches = index.search(question, k)
         answer = build_answer(question, matches, '', threshold)
         for citation in answer['citations']:
@@ -222,6 +241,7 @@ def main():
     p_add.add_argument('pdfs', nargs='+')
     p_add.add_argument('--cache-dir')
     p_add.add_argument('--offline', action='store_true')
+    p_add.add_argument('--ocr', action='store_true', help='OCR textless pages using local Tesseract English')
     p_list = sub.add_parser('list', help='List documents')
     p_list.add_argument('store')
     p_ask = sub.add_parser('ask', help='Ask across the whole library')
@@ -237,7 +257,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == 'add':
-            lib = Library(args.store, cache_dir=args.cache_dir, offline=args.offline)
+            lib = Library(args.store, cache_dir=args.cache_dir, offline=args.offline, ocr=args.ocr)
             added = []
             for name in args.pdfs:
                 with open(name, 'rb') as stream:

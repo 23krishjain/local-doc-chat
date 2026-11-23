@@ -1,299 +1,209 @@
 # local-doc-chat
 
-A local image and document Q&A project, built one step at a time.
-The goal is to answer from uploaded PDFs/images, with page references. Today
-single-image Q&A through a local Ollama server and text-PDF extraction with
-page-linked chunks, PDF-to-PNG rendering, dense text retrieval, cited
-evidence-gated extractive answers, a loopback-only web UI, a
-content-addressed multi-document library, a library-aware web UI and a
-FastAPI JSON API are implemented. No generated PDF answers, OCR, public server
-or multi-turn memory yet.
+A local, single-user PDF evidence-Q&A tool. Add text PDFs or scanned printed
+English PDFs, ask across a persistent document library, and read exact source
+passages with physical page numbers and document SHA-256 citations. Includes
+a browser UI, command-line tools and a FastAPI JSON API.
 
-## Current status (Day 9)
+## Release scope
 
-The image HTTP client/CLI, text-PDF reader/chunker, page renderer, dense text
-retrieval, evidence-gated cited answers, loopback-only web UI, multi-document
-library, library-aware web UI and FastAPI JSON API are implemented. 111 tests
-pass: the prior 98 checks plus thirteen API checks. Separate real CPU embedding
-evaluations retrieved the expected page for 6/6 answerable questions and
-abstained on 2/2 absent-answer questions on a two-page synthetic sample, and a
-two-document library run (CLI and HTTP) cited the owning document by content
-hash, using a fixture-tuned threshold. That is not general accuracy or
-calibrated confidence.
-Unit tests do not call a model; the separate evaluations do. **Actual vision/chat inference, generated answer quality and
-hardware performance have not been verified.** No benchmark results are claimed.
+The **local PDF/scan evidence-Q&A portfolio release is implemented**. It uses
+real CPU MiniLM embeddings and opt-in local Tesseract OCR. Answers are retrieved
+quotes, not LLM-generated explanations. If the top similarity does not clear
+the evidence threshold, the tool returns insufficient evidence.
 
-## Try it locally
+The separate Ollama image client is experimental: its protocol tests pass,
+but actual vision/chat inference and laptop GPU performance have **not** been
+verified. This release does not claim a finished generative vision chatbot.
+No public deployment, authentication, TLS, multi-user operation or production
+hardening is included. Only use trusted local documents.
 
-Python 3.10+; the client itself has no third-party dependencies.
-Install Ollama using its official instructions: https://ollama.com/download .
-Run its local server, then in another terminal:
+## Quick start
+
+Python 3.10+. Create a virtual environment and install the full dependency set:
 
 ```sh
-ollama pull qwen2.5vl:7b
-python -m docchat samples/receipt.png 'What is the total on this receipt?'
+python -m venv .venv
+# Linux/macOS:
+. .venv/bin/activate
+# Windows PowerShell instead: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements-all.txt
 ```
 
-Run the full test suite after installing rendering/PDF dependencies:
+For scan OCR, separately install Tesseract with English language data and put
+`tesseract` on PATH. On Debian/Ubuntu:
 
 ```sh
-python -m pip install -r requirements-render.txt -r requirements-search.txt
-python -m unittest discover -s tests -v
+sudo apt-get install tesseract-ocr tesseract-ocr-eng
+tesseract --version
 ```
 
-The sample is synthetic: total INR 180 (tea INR 80 + sandwich INR 100).
-A real run should be checked against that expected answer, not assumed correct.
-The CLI reports request wall time, including model loading when cold. Record
-GPU model, OS, Ollama version, model tag, context size and cold/warm state before
-comparing times. No result from a different machine proves laptop performance.
-
-## Read a text PDF (Day 2)
-
-Install the pinned PDF parser, then extract the included synthetic policy:
+Other platform instructions: https://tesseract-ocr.github.io/tessdoc/Installation.html
+OCR was tested here with Tesseract 4.1.1, English data. Other versions and
+platforms have not been tested in this project. Without it, omit `--ocr` and
+use text-layer PDFs.
 
 ```sh
-python -m pip install -r requirements.txt
-python -m docchat.pdf samples/policy.pdf
-python -m docchat.pdf samples/policy.pdf --chunk-size 500 --overlap 75
+python -m docchat.web --library .docchat-library --ocr --cache-dir .cache/fastembed
 ```
 
-The command prints JSON to stdout without creating a stored copy. Each page has
-its physical 1-based PDF page number, extracted text and `text`/`no_text` status.
-Each chunk has the page number and exact character offsets within that extracted
-page text. Printed page labels may differ. Chunks never cross pages; a blank
-page is kept in the page list so later page references do not shift.
+Open **http://127.0.0.1:8765** on the same computer. Add
+`samples/policy.pdf` and `samples/scanned-receipt.pdf`. Try:
 
-`no_text` does not prove a page is scanned: it can also be blank, use unsupported
-text encodings, or contain only images. No OCR or vision call is made yet. A
-successful text extraction is not a question-answering result. Tables, columns,
-reading order and whitespace may be wrong; compare extracted text to the PDF.
-Fixed character chunks can split words and do not account for model token limits.
+- "What is the refund window for fees?" Expected: source passage on page 2,
+  including the seven-day refund window.
+- "What is the total on the receipt?" Expected: scanned receipt page 1,
+  including `TOTAL: INR 180` after OCR.
+- "What is the warranty period for the lunar module?" Expected: insufficient
+  evidence on these fixtures.
 
-Limits: 20MiB input, 100 pages, one million extracted characters. Encrypted PDFs
-are rejected. A failed read prints an error and exits nonzero without partial
-JSON. These limits are **not a security sandbox**: PDF parsing/decompression can
-consume resources before page/character checks run. Only use trusted local PDFs
-for now. An internet-facing upload service needs process isolation, time/memory
-limits and broader hostile-file testing before deployment. Redirecting stdout
-stores the full extracted document, so do not commit private output to Git.
+The first embedding operation downloads the English MiniLM ONNX model
+(about 90MB according to the runtime registry). Model download requests leave
+the machine; document text is embedded locally, not sent to hosted inference.
+For subsequent cache-only operation, use the same `--cache-dir` and add
+`--offline`. Missing cached model files fail rather than silently use a cloud
+service. Model weights are external and not committed.
 
-Synthetic sample checks: delivery fee is INR 40 on physical page 1; refund window
-is 7 days on page 2. `samples/policy.pdf` is not an actual business policy.
+The UI displays readable passages, citations, OCR warnings, missing-evidence
+states and processing errors. Documents are shown by content-hash prefix,
+not filename. Citations contain full hashes and character offsets. Removing
+stored documents is available through the CLI, not a browser control.
 
-## Render PDF pages (Day 3)
-
-Install optional rendering dependencies (PDFium/Pillow), then choose pages:
+## CLI and API
 
 ```sh
-python -m pip install -r requirements-render.txt
-python -m docchat.render samples/scanned-receipt.pdf rendered-scan --dpi 120
-python -m docchat.render samples/policy.pdf rendered-policy --pages 2 --dpi 100
-```
-
-Output is a new directory with `page-0001.png`-style filenames and `manifest.json`.
-The manifest records the exact input SHA-256, physical page number, DPI, image
-dimensions and text status. The source PDF is not copied into the final output.
-Existing output paths are refused; choose a different name for another run.
-Do not run concurrent writers to the same output path.
-
-You can pass a rendered PNG into the Day 1 image client:
-
-```sh
-python -m docchat rendered-scan/page-0001.png 'What is the total on this receipt?'
-```
-
-This last command needs an actual local Ollama model. **It has not been verified
-against a real model.** Expected sample answer: INR 180. Rendering is verified;
-recognising/answering from the image is a separate open check.
-
-Defaults: DPI 120 (allowed 36-200), at most four million pixels per page and
-twenty million total. Lower DPI or select fewer pages if the budget is exceeded.
-These are bitmap guardrails, not parser isolation. Only trusted local files.
-The reader validates/extracts every page before rendering selected pages, which
-can be expensive. No OCR or automatic scan detection. Output images contain the
-source content; keep private renders out of Git. pypdfium2 and PDFium dependency
-licenses/notices are separate from this repo's MIT license. See day-03 notes.
-
-## Search text evidence (Day 4)
-
-```sh
-python -m pip install -r requirements-search.txt
-python -m docchat.search samples/policy.pdf 'How long do I have to ask for my money back?' --k 1
-# After the first model download, use cache-only mode:
-python -m docchat.search samples/policy.pdf 'What does shipping cost?' --offline
-python eval/retrieval_check.py --offline
-```
-
-The small English all-MiniLM-L6-v2 ONNX encoder runs on CPU via FastEmbed; it is
-not the Qwen vision model. First use downloads model files (about 90MB according
-to FastEmbed's registry). Local document text is embedded on-device, not sent to
-a hosted inference API. `--cache-dir PATH` selects storage; `--offline` refuses
-network model loading and fails if needed files are missing. Weights are not
-bundled. Both original model and ONNX artifact metadata list Apache-2.0.
-
-Results are nearest evidence with page/character offsets, not an answer. Cosine
-scores are not confidence probabilities. Even an unrelated question gets a
-nearest page: there is no calibrated abstention yet. Scan-only PDFs return no
-text matches; rendering alone does not add their content to the text index.
-The encoder limit is 256 tokens; overlong chunks/queries are rejected, not
-silently truncated. Use smaller chunks through the Python API if necessary.
-Current CLI rebuilds an in-memory index each time, capped at 2000 chunks.
-
-The real-model smoke test's 6/6 page hits are on only two synthetic pages. Two
-absent-answer questions still return irrelevant nearest pages. See eval/ for
-cases/results; no general retrieval or generated-answer accuracy is claimed.
-
-## Cited answers or abstention (Day 5)
-
-```sh
-python -m docchat.answer samples/policy.pdf 'How long do I have to ask for my money back?'
-python -m docchat.answer samples/policy.pdf "What is the CEO's birthday?" --offline
-python eval/abstention_check.py --offline
-```
-
-`docchat.answer` returns the exact retrieved passage with page/character
-citations and the source SHA-256 when the top match clears `--min-score`
-(default 0.34); otherwise it abstains with `insufficient_evidence` and labels
-the nearest passages as below threshold. It never invents text: the excerpt is
-always the exact retrieved chunk, and citations are validated against the
-retrieved set and source bytes before output. This is extractive evidence with
-provenance, not a generated answer and not proof the passage is true.
-
-The 0.34 default only separates the included 8-question, two-page synthetic
-fixture (lowest answerable score 0.364, highest absent 0.290). Cosine scores
-are not probabilities; retune per corpus and model before relying on any
-threshold. The gate separates this sample, nothing more.
-
-## Local web UI (Day 6)
-
-```sh
-python -m docchat.web --port 8765
-# then open http://127.0.0.1:8765 in a browser on the same machine
-```
-
-Binds loopback only and refuses any other host. The page posts raw PDF bytes to
-the same process (`POST /ask?q=...`) and shows the cited extractive answer or
-`insufficient_evidence`. No authentication, TLS or network hardening: it is a
-single-user local tool for trusted inputs, not a server to expose. The index is
-rebuilt per question (stateless, capped at 2000 chunks), so large documents are
-slow. Errors return the exception type only, not internals. The HTML is a
-minimal fetch-driven form; markup was checked from served bytes, not
-pixel-rendered.
-
-## Multi-document library (Day 7)
-
-```sh
-python -m docchat.library add .docchat-library samples/policy.pdf
+python -m docchat.library add .docchat-library samples/policy.pdf samples/scanned-receipt.pdf --ocr --cache-dir .cache/fastembed
 python -m docchat.library list .docchat-library
-python -m docchat.library ask .docchat-library 'How long do I have to ask for my money back?'
-python eval/library_check.py --offline
+python -m docchat.library ask .docchat-library 'What is the total on the receipt?' --offline --cache-dir .cache/fastembed
+python -m docchat.library remove .docchat-library FULL_DOCUMENT_SHA256
+python -m docchat.api --library .docchat-library --ocr --offline --cache-dir .cache/fastembed
 ```
 
-Documents are named by the SHA-256 of their exact bytes, never a filename, and
-each citation is bound to its owning document's hash. Embeddings persist per
-document in the store directory, so re-adding or re-opening does not re-embed
-unchanged documents. The cache is only trusted when it reproduces the freshly
-parsed chunks and the current model exactly; anything else is re-embedded, and
-a corrupt cache fails loudly with a re-add instruction rather than silently
-dropping a document. Cache files contain extracted text: keep the store as
-private as the documents (`.docchat-*/` is already git-ignored). The merged
-index is capped at 5000 chunks across all documents. Scan-only PDFs still
-contribute no text chunks. The store is a directory of JSON files, not a
-database; no concurrency hardening for simultaneous writers.
+API on `127.0.0.1:8000`:
 
-## Library web UI (Day 8)
+| Method | Path | Input/result |
+| --- | --- | --- |
+| GET | `/health` | Liveness only, not model readiness |
+| GET | `/documents` | Hashes, page/chunk counts, no-text/OCR page metadata |
+| POST | `/documents` | Raw PDF bytes and correct Content-Length; 201 add metadata |
+| POST | `/ask` | JSON question (1-2000 nonblank chars), strict integer k (1-20, default 3) |
 
 ```sh
-python -m docchat.web --library .docchat-library --port 8765
-# then open http://127.0.0.1:8765 in a browser on the same machine
+curl -X POST http://127.0.0.1:8000/documents --data-binary @samples/policy.pdf
+curl -X POST http://127.0.0.1:8000/ask -H 'Content-Type: application/json' -d '{"question":"What is the refund window for fees?","k":3}'
 ```
 
-With `--library STORE` the loopback web UI serves the persistent
-multi-document library instead of single-upload mode. The page adds PDFs once
-(`POST /library/add`), lists stored documents with page/chunk counts and
-no-text-page flags (`GET /documents`), and asks across all of them
-(`POST /library/ask?q=...&k=...`, k from 1 to 20). Answers carry the same
-evidence gate as the CLI: each citation names its owning document by SHA-256,
-and a question without clearing evidence returns `insufficient_evidence`.
-Adding an unchanged document reuses its validated cache instead of
-re-embedding. Library operations are serialized with a lock; the shared
-embedder and cache files are not thread-safe. The single-upload `/ask` route
-is not served in library mode. Same boundaries as Day 6: loopback only, no
-authentication, TLS or network hardening, trusted local inputs only, and error
-responses return the exception type only. The page renders raw JSON answers;
-the document list is rendered as text lines. This page was pixel-verified in a
-headless browser (list, answered and abstained states). Offline real-model
-HTTP checks are in `eval/web_library_check.py` and `eval/day08-results.json`.
+Validation errors return 422 with field locations and constraint kinds, not
+echoed submitted values. Pipeline errors return 422 with exception type only;
+missing dependencies return 500. Missing/oversize/mismatched upload lengths
+return 400. Actual streamed bytes are capped before full buffering, even when
+a claimed Content-Length is too small. Blocking add work runs off the ASGI
+event loop; library operations remain serialized by a shared process lock.
+Docs/OpenAPI are disabled. No throughput claim follows from these choices.
 
-## FastAPI JSON API (Day 9)
+Without `--library`, `python -m docchat.web` runs the earlier stateless,
+single-upload UI. It does not use OCR. The lower-level `docchat.pdf`,
+`docchat.render`, `docchat.search` and `docchat.answer` modules remain usable;
+see the development notes for their narrower contracts.
+
+## Architecture and provenance
+
+```text
+PDF bytes -> bounded text extraction -> optional OCR of textless pages
+          -> physical-page chunks -> local MiniLM embeddings
+          -> per-document JSON vector cache -> cosine retrieval
+          -> evidence gate -> exact quote + page/offset/hash citations
+```
+
+- Documents are identified by SHA-256 of their bytes, never filenames.
+- Re-adding compares current extraction/model/mode with stored chunks before
+  reusing vectors. Changed extraction is re-embedded. OCR re-add still renders
+  and recognizes the textless pages to validate that match.
+- A restart loads cached vectors without embedding documents again. Cache
+  files are trusted local state, not signed or safe against a malicious local
+  writer. Corrupt caches fail loudly; re-add the original document to repair.
+- Cache files contain extracted/OCR text and vectors, not the original PDFs.
+  Protect and back up the directory like the documents. `.docchat-*/` is
+  git-ignored. Do not commit private caches, model files or generated output.
+- Citations bind to retrieved passages and their owning document hash. OCR
+  offsets refer to recognized text, not image coordinates. Page numbers are
+  physical 1-based PDF pages, which may differ from printed page labels.
+- Quote fidelity and provenance do not prove the quote answers the question
+  or that its contents are true. Open the original and check it.
+
+## Verification
 
 ```sh
-python -m pip install -r requirements-api.txt
-python -m docchat.api --library .docchat-library --port 8000
-# then, from the same machine:
-curl -X POST http://127.0.0.1:8000/ask -H 'Content-Type: application/json' \
-  -d '{"question": "How long do I have to ask for my money back?"}'
+python -m unittest discover -s tests -v
+# equivalently, after installation: make test
+# After a first model download, the release acceptance check is offline:
+python eval/release_check.py --cache-dir .cache/fastembed
 ```
 
-`docchat/api.py` serves the same library pipeline as a typed JSON API:
-`GET /health`, `GET /documents`, `POST /documents` (raw PDF bytes, 20MiB cap)
-and `POST /ask` (JSON body, question 1-2000 characters and non-blank, k from 1
-to 20). Request validation is declarative (pydantic); invalid input gets a 422
-listing field names and constraint kinds, never the echoed values. Pipeline
-failures map to 422 with the exception type name only, a missing optional
-dependency to 500. Interactive docs and the OpenAPI schema are disabled. The
-same trust boundary as the web UI applies: loopback bind only (other hosts are
-refused), no authentication or TLS, trusted local inputs. Library operations
-are serialized with a lock. Verified by 13 stub-library HTTP tests, a real
-offline-model evaluation through the ASGI app (`eval/api_check.py`,
-`eval/day09-results.json`) and a live uvicorn socket smoke test. The pinned
-starlette release deprecates its httpx-based TestClient in favour of `httpx2`;
-tests run clean on the pinned versions, and the warning is noted, not hidden.
+The full suite has **124 tests**, including real PDF extraction/rendering,
+HTTP/ASGI validation, malformed-cache handling, citation binding, and an actual
+English receipt OCR test when Tesseract is installed. Most retrieval/HTTP
+unit tests use stub embeddings; they do not establish model accuracy. CI
+example in `docs/ci/tests.yml.example` installs the English OCR engine and runs the suite; it is a template, not an active workflow or a claim of a remote CI pass.
 
-## Model and hardware
+`eval/release-results.json` records a separate real OCR + CPU embedding
+acceptance check through the API: text PDF and scan upload, receipt total/page/
+hash citation, policy citation after restart, absent-question abstention,
+invalid-upload rejection, cache reuse and OCR metadata. The five earlier
+`eval/*_check.py` checks remain regression tests with their saved results.
+Only two synthetic PDFs are used. The earlier 6/6 page hits and 2/2 abstentions
+are fixture results, not general accuracy, calibrated confidence or load tests.
 
-Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
-download for 7B and 3.2GB for 3B. Download size is NOT total RAM/VRAM use: image
-processing, context and the runtime need extra memory. A 6GB GPU may require
-CPU offload. Keep context modest (the client uses 4096) and measure locally.
-Do not assume the advertised maximum context fits your laptop.
+Browser UI checks use real Chrome at desktop and phone widths, including
+OCR upload, cited answer, insufficient evidence, error handling and inert
+rendering of HTML-like document text. The UI uses text nodes, never document
+HTML. Evidence images and notes: `docs/release.md`.
 
-License matters: the official 7B model metadata lists Apache-2.0, while the
-3B model uses a Qwen Research License with non-commercial restrictions. Do not
-silently substitute 3B for commercial/in-house business use. Check the exact
-artifact's license before downloading/using it; this repo redistributes no weights.
-A smaller permissively licensed alternative needs a separate evaluation.
+## Limits and safety
 
-## Local-only boundaries
+- Trusted local files only. Byte/page/character/pixel limits are guardrails,
+  **not a hostile-PDF sandbox**. Native parsing can consume resources before
+  checks. Do not expose either server or Ollama to the network.
+- Loopback defaults and CLI bind checks do not replace authentication or
+  browser-origin protections. An imported ASGI app can be served elsewhere
+  by its caller; do not do this without separate hardening.
+- PDF cap 20MiB, 100 pages, one million combined characters; merged library
+  cap 5000 chunks. English MiniLM input is limited to 256 tokens with an
+  explicit rejection instead of silent truncation. Linear vector search.
+- OCR is opt-in on textless pages only, maximum 10 pages per PDF, 150DPI,
+  bounded render pixels, 30-second Tesseract timeout per page. Printed English
+  only tested. Blank pages may be OCR-attempted; no-text is not scan detection.
+  Mixed pages with some text and unrecognized images are not OCR-augmented.
+  Handwriting, tables, columns, rotations and tiny print may be wrong.
+- Default evidence threshold 0.34 is tuned to the tiny synthetic fixture,
+  not transferable or calibrated. Similarity is not a probability. New
+  corpora need their own evaluation and threshold selection.
+- Single-process, single-user library only. A process-local lock does not
+  protect multiple CLI/server writers. Do not share a store between writers.
+- Pinned Starlette 1.7.0 warns that httpx TestClient is deprecated in favor of
+  httpx2. Tests pass on the pinned environment; migration is not claimed.
+- No generative PDF answers, multi-turn memory or laptop GPU benchmarks.
+  The optional image CLI `python -m docchat samples/receipt.png 'What is the
+  total?'` requires a separately installed, running local Ollama model and
+  has not had real-model inference verified here.
 
-The client talks only to a loopback HTTP origin, bypasses proxies, refuses
-redirects, and sends base64 image bytes to your own Ollama. It does not save
-uploads or chat history. Keep Ollama bound to loopback and do not expose its
-port to your network. Review Ollama's own settings/logging separately; this
-client is not a full privacy or security audit. Initial model installation
-requires internet access. Use synthetic files first, not private bank records.
+## License and references
 
-Input is limited to PNG/JPEG with basic signature checks and a 10MiB cap.
-This is not a secure general-purpose upload parser. Model outputs are untrusted;
-no tools or commands are executed. Instructions embedded in images are treated
-as content by the prompt, but prompts do not guarantee injection resistance.
-Handwriting, charts, tables and tiny print may be wrong or unreadable.
+Project code: MIT. Dependencies, engines and model licenses are separate;
+no weights, Tesseract binary or language data are redistributed here.
 
-## Next steps
+- Tesseract manual / Apache-2.0: https://tesseract-ocr.github.io/tessdoc/
+- Tesseract license: https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/LICENSE
+- MiniLM ONNX artifact: https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx
+- Ollama API: https://docs.ollama.com/api/chat
+- Optional Qwen 7B artifact: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
 
-Grounded extractive Q&A with source pages, abstention, a local web UI, a
-multi-document library, a library-aware web UI and a FastAPI JSON API are in.
-Next: OCR for scan-only pages so they join the text index, or generated
-answers grounded in validated citations once a chat/vision model run is
-actually verified. Page citations are evidence to inspect, not proof the answer is true.
-Tests and daily notes live in `tests/` and `docs/`. Actual model evaluation
-remains an open requirement.
+The optional Qwen 7B metadata lists Apache-2.0, while the 3B variant has a
+research/noncommercial license. Do not substitute variants for business use
+without checking the exact artifact. Download size is not VRAM/RAM use.
+Development history and interview questions are in `docs/day-*.md`. Those
+notes describe their original session, not the current release contract.
 
-## Sources
-
-- Ollama model tags/sizes: https://ollama.com/library/qwen2.5vl
-- Chat request contract: https://docs.ollama.com/api/chat
-- Official 7B model: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
-- Official 3B license: https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/raw/main/LICENSE
-
-Project code is MIT licensed. Model/runtime licenses are separate.
+This bounded PDF/scan release ends the planned feature work. Future projects
+are separate; missing production and generative capabilities are limitations,
+not an unending feature queue.

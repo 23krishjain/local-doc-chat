@@ -123,6 +123,21 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json(), {'error': 'DocumentError'})
 
+    def test_k_is_strict_integer_and_extra_keys_rejected(self):
+        for k in [True, 1.2, '3']:
+            self.assertEqual(self.client.post('/ask', json={'question': 'q', 'k': k}).status_code, 422)
+        self.assertEqual(self.client.post('/ask', json={'question': 'q', 'extra': 'x'}).status_code, 422)
+
+    def test_actual_stream_cap_with_false_content_length(self):
+        client = TestClient(create_app(StubLibrary(), max_bytes=4))
+        response = client.post('/documents', content=b'12345', headers={'content-length': '1'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(client.get('/documents').json()['documents'], [])
+
+    def test_content_length_mismatch(self):
+        response = self.client.post('/documents', content=b'x', headers={'content-length': '2'})
+        self.assertEqual(response.status_code, 400)
+
     def test_create_app_rejects_bad_min_score(self):
         with self.assertRaises(ValueError):
             create_app(StubLibrary(), min_score=1.5)

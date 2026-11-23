@@ -1,0 +1,15 @@
+{
+  "fixture_only": true,
+  "checks": {
+    "policy.pdf": true,
+    "scanned-receipt.pdf": true,
+    "ocr_receipt_cited": true,
+    "restart_policy_cited": true,
+    "absent_abstained": true,
+    "bad_upload_rejected": true,
+    "cache_reused": true,
+    "ocr_metadata": true
+  },
+  "passed": true,
+  "limits": "Two synthetic PDFs, English printed OCR, fixture-tuned threshold; no general accuracy, GPU, chat or load-test claim."
+}

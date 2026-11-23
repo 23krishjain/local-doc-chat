@@ -84,6 +84,7 @@ async function refreshDocs() {
   try {
     const r = await fetch('/documents');
     const data = await r.json();
+    if (!r.ok) { docs.textContent = 'Could not list documents: ' + data.error; return; }
     if (!data.documents || !data.documents.length) {
       docs.textContent = 'Library is empty. Add a PDF above.';
       return;
@@ -121,6 +122,57 @@ document.getElementById('ask').addEventListener('click', async () => {
 refreshDocs();
 </script>
 </body></html>"""
+
+
+# Use DOM text nodes, never interpolate document text into HTML.
+RESULT_SCRIPT = b"""
+function renderResult(data) {
+  const out = document.getElementById('out');
+  out.replaceChildren();
+  const line = (tag, value) => {
+    const node = document.createElement(tag);
+    node.textContent = value;
+    out.appendChild(node);
+  };
+  if (data.error) {
+    line('h3', 'Could not process this request');
+    line('p', data.error + '. Check the file, local model cache and library.');
+    return;
+  }
+  if ('embedded' in data) {
+    line('h3', data.embedded ? 'Document added' : 'Document already indexed');
+    line('p', data.chunks + ' text chunks from ' + data.pages + ' pages.');
+    line('p', 'Document SHA-256: ' + data.source_sha256);
+    if (data.ocr_pages && data.ocr_pages.length)
+      line('p', 'OCR attempted on pages ' + data.ocr_pages.join(', ') + '. Check recognition against the original.');
+    if (data.no_text_pages && data.no_text_pages.length)
+      line('p', 'No text on pages ' + data.no_text_pages.join(', ') + '. Try library mode with --ocr for scans.');
+    return;
+  }
+  if (data.status === 'insufficient_evidence') {
+    line('h3', 'Insufficient evidence');
+    line('p', 'No passage cleared the evidence threshold. Try a more specific question or add the right document.');
+    return;
+  }
+  line('h3', 'Source passage');
+  line('blockquote', data.excerpt || '');
+  line('h3', 'Page citations');
+  for (const c of data.citations || []) {
+    line('p', 'Page ' + c.page + ' | characters ' + c.start + '-' + c.end +
+      ' | similarity ' + c.score.toFixed(3));
+    line('p', 'Document SHA-256: ' + c.source_sha256);
+  }
+  line('p', 'Exact retrieved text, not a generated answer. Similarity is not confidence. OCR text may be wrong.');
+}
+"""
+for _name in ('PAGE', 'LIBRARY_PAGE'):
+    _page = globals()[_name].replace(b'<pre id="out" aria-live="polite"></pre>',
+                                    b'<section id="out" aria-live="polite"></section>')
+    _page = _page.replace(b'<script>', b'<script>' + RESULT_SCRIPT, 1)
+    _page = _page.replace(b'out.textContent = JSON.stringify(data, null, 2);',
+                          b'renderResult(data);')
+    _page = _page.replace(b'</style>', b' #out{overflow-wrap:anywhere} blockquote{white-space:pre-wrap;margin:1rem 0;padding:1rem;background:#f0f5fa;border-left:4px solid #246} button{padding:.5rem .8rem;cursor:pointer} pre{overflow-wrap:anywhere}</style>')
+    globals()[_name] = _page
 
 
 def make_handler(answer_func=None, library=None, max_bytes=MAX_PDF_BYTES,
@@ -266,6 +318,7 @@ def main():
     parser.add_argument('--min-score', type=float, default=DEFAULT_MIN_SCORE)
     parser.add_argument('--cache-dir')
     parser.add_argument('--offline', action='store_true', help='Use downloaded model files only')
+    parser.add_argument('--ocr', action='store_true', help='OCR textless pages in library mode with local Tesseract English')
     parser.add_argument('--library', metavar='STORE',
                         help='Serve the persistent multi-document library at STORE instead of single-upload mode')
     args = parser.parse_args()
@@ -278,12 +331,12 @@ def main():
 
     if args.library:
         library = Library(args.library, cache_dir=args.cache_dir,
-                          offline=args.offline)
+                          offline=args.offline, ocr=args.ocr)
         server = make_server(args.port, library=library, min_score=threshold)
     else:
         def answer_func(data, question):
             return answer_bytes(data, question, min_score=threshold,
-                                cache_dir=args.cache_dir, offline=args.offline)
+                                cache_dir=args.cache_dir, offline=args.offline, ocr=args.ocr)
         server = make_server(args.port, answer_func)
     host, port = server.server_address[:2]
     print(f'Serving on http://{host}:{port} (loopback only). Ctrl+C to stop.',

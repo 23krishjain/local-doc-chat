@@ -10,14 +10,14 @@ shared embedder and cache files are not thread-safe.
 Run with: python -m docchat.api --library .docchat-library [--port 8000]
 """
 import argparse
-import json
 import sys
 import threading
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from .answer import DEFAULT_MIN_SCORE, check_min_score
 from .library import Library
@@ -29,6 +29,7 @@ LOOPBACK_HOSTS = {'127.0.0.1', '::1', 'localhost'}
 
 
 class AskRequest(BaseModel):
+    model_config = ConfigDict(strict=True, extra='forbid')
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARS)
     k: int = Field(default=3, ge=1, le=20)
 
@@ -88,12 +89,18 @@ def create_app(library, min_score=DEFAULT_MIN_SCORE, max_bytes=MAX_PDF_BYTES):
             return JSONResponse(
                 {'error': 'PDF body missing or exceeds the size limit'},
                 status_code=400)
-        data = await request.body()
-        if len(data) > max_bytes:
-            return JSONResponse({'error': 'PDF exceeds the size limit'},
-                                status_code=400)
-        with lock:
-            meta = library.add_bytes(data)
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > max_bytes:
+                return JSONResponse({'error': 'PDF exceeds the size limit'},
+                                    status_code=400)
+            data.extend(chunk)
+        if len(data) != length:
+            return JSONResponse({'error': 'content length mismatch'}, status_code=400)
+        def add():
+            with lock:
+                return library.add_bytes(bytes(data))
+        meta = await run_in_threadpool(add)
         return JSONResponse(meta, status_code=201)
 
     @app.post('/ask')
@@ -113,6 +120,7 @@ def main():
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--min-score', type=float, default=DEFAULT_MIN_SCORE)
     parser.add_argument('--cache-dir')
+    parser.add_argument('--ocr', action='store_true', help='OCR textless pages with local Tesseract English')
     parser.add_argument('--offline', action='store_true',
                         help='Use downloaded model files only')
     args = parser.parse_args()
@@ -131,7 +139,7 @@ def main():
               file=sys.stderr)
         return 1
     library = Library(args.library, cache_dir=args.cache_dir,
-                      offline=args.offline)
+                      offline=args.offline, ocr=args.ocr)
     app = create_app(library, min_score=threshold)
     uvicorn.run(app, host=args.host, port=args.port, log_level='warning')
     return 0
