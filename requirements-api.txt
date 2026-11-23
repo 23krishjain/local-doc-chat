@@ -1,0 +1,6 @@
+# Optional FastAPI JSON API (Day 9). Pinned to the versions the tests and
+# offline evaluation ran against on Python 3.10. Licenses: FastAPI MIT,
+# Starlette BSD-3-Clause, pydantic MIT, uvicorn BSD-3-Clause, httpx BSD-3-Clause.
+fastapi==0.162.5
+uvicorn==0.54.0
+httpx==0.28.1

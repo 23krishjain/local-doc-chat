@@ -5,16 +5,16 @@ The goal is to answer from uploaded PDFs/images, with page references. Today
 single-image Q&A through a local Ollama server and text-PDF extraction with
 page-linked chunks, PDF-to-PNG rendering, dense text retrieval, cited
 evidence-gated extractive answers, a loopback-only web UI, a
-content-addressed multi-document library and a library-aware web UI are
-implemented. No generated PDF answers, OCR, public server or multi-turn memory
-yet.
+content-addressed multi-document library, a library-aware web UI and a
+FastAPI JSON API are implemented. No generated PDF answers, OCR, public server
+or multi-turn memory yet.
 
-## Current status (Day 8)
+## Current status (Day 9)
 
 The image HTTP client/CLI, text-PDF reader/chunker, page renderer, dense text
 retrieval, evidence-gated cited answers, loopback-only web UI, multi-document
-library and library-aware web UI are implemented. 98 tests pass: the prior 85
-checks plus thirteen library web-UI checks. Separate real CPU embedding
+library, library-aware web UI and FastAPI JSON API are implemented. 111 tests
+pass: the prior 98 checks plus thirteen API checks. Separate real CPU embedding
 evaluations retrieved the expected page for 6/6 answerable questions and
 abstained on 2/2 absent-answer questions on a two-page synthetic sample, and a
 two-document library run (CLI and HTTP) cited the owning document by content
@@ -225,6 +225,31 @@ the document list is rendered as text lines. This page was pixel-verified in a
 headless browser (list, answered and abstained states). Offline real-model
 HTTP checks are in `eval/web_library_check.py` and `eval/day08-results.json`.
 
+## FastAPI JSON API (Day 9)
+
+```sh
+python -m pip install -r requirements-api.txt
+python -m docchat.api --library .docchat-library --port 8000
+# then, from the same machine:
+curl -X POST http://127.0.0.1:8000/ask -H 'Content-Type: application/json' \
+  -d '{"question": "How long do I have to ask for my money back?"}'
+```
+
+`docchat/api.py` serves the same library pipeline as a typed JSON API:
+`GET /health`, `GET /documents`, `POST /documents` (raw PDF bytes, 20MiB cap)
+and `POST /ask` (JSON body, question 1-2000 characters and non-blank, k from 1
+to 20). Request validation is declarative (pydantic); invalid input gets a 422
+listing field names and constraint kinds, never the echoed values. Pipeline
+failures map to 422 with the exception type name only, a missing optional
+dependency to 500. Interactive docs and the OpenAPI schema are disabled. The
+same trust boundary as the web UI applies: loopback bind only (other hosts are
+refused), no authentication or TLS, trusted local inputs. Library operations
+are serialized with a lock. Verified by 13 stub-library HTTP tests, a real
+offline-model evaluation through the ASGI app (`eval/api_check.py`,
+`eval/day09-results.json`) and a live uvicorn socket smoke test. The pinned
+starlette release deprecates its httpx-based TestClient in favour of `httpx2`;
+tests run clean on the pinned versions, and the warning is noted, not hidden.
+
 ## Model and hardware
 
 Qwen2.5-VL-7B is the initial candidate, not a fit guarantee. Ollama lists a 6GB
@@ -257,9 +282,10 @@ Handwriting, charts, tables and tiny print may be wrong or unreadable.
 ## Next steps
 
 Grounded extractive Q&A with source pages, abstention, a local web UI, a
-multi-document library and a library-aware web UI are in. Next: OCR for
-scan-only pages so they join the text index, or generated answers grounded in
-validated citations once a chat/vision model run is actually verified. Page citations are evidence to inspect, not proof the answer is true.
+multi-document library, a library-aware web UI and a FastAPI JSON API are in.
+Next: OCR for scan-only pages so they join the text index, or generated
+answers grounded in validated citations once a chat/vision model run is
+actually verified. Page citations are evidence to inspect, not proof the answer is true.
 Tests and daily notes live in `tests/` and `docs/`. Actual model evaluation
 remains an open requirement.
 
