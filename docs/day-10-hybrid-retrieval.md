@@ -1,6 +1,6 @@
 # Day 10: hybrid retrieval and a retrieval eval
 
-- Added BM25, rank fusion and `method=` on `Index.search`. 14 new tests: BM25
+- Added BM25, rank fusion and `method=` on `Index.search`. 15 new tests: BM25
   term weighting, saturation, length normalisation, hand-computed RRF, ranker
   and Index behaviour with a fake embedder. Full suite: 139 tests.
 - Eval chunk size is 300 characters because 500-character chunks of
