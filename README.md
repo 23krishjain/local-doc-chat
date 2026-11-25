@@ -131,6 +131,29 @@ PDF bytes -> bounded text extraction -> optional OCR of textless pages
 - Quote fidelity and provenance do not prove the quote answers the question
   or that its contents are true. Open the original and check it.
 
+## Hybrid retrieval (BM25 + dense, reciprocal rank fusion)
+
+`Index.search(question, k, method='dense'|'bm25'|'hybrid')`. Default stays
+dense. BM25 is a stdlib implementation (`docchat/hybrid.py`); hybrid fuses the
+dense and BM25 rankings by rank (RRF, k=60), never by raw score.
+
+Measured with `eval/hybrid_eval.py` on four public arXiv papers (1156 chunks of
+300 characters, 31 author-written questions, results in
+`eval/hybrid-results.json`). A chunk counts as relevant only if it contains the
+question's evidence string, so this is strict and understates answers spread
+over several chunks.
+
+| method | recall@1 | recall@3 | recall@5 | recall@10 | MRR |
+|---|---|---|---|---|---|
+| dense (MiniLM) | 0.161 | 0.290 | 0.419 | 0.548 | 0.281 |
+| BM25 | 0.194 | 0.355 | 0.452 | 0.677 | 0.319 |
+| hybrid (RRF) | 0.226 | 0.387 | 0.452 | 0.548 | 0.350 |
+
+Reading it honestly: hybrid has the best MRR and top-3, but BM25 alone has the
+best recall@10 here. With 31 questions, differences of one or two questions are
+noise. The set is small and author-labelled; it is not a general benchmark, and
+no reranker, vector database or generated answers exist yet.
+
 ## Verification
 
 ```sh

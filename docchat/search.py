@@ -74,7 +74,9 @@ class Index:
         if any(len(v) != self.dimension for v in self.vectors):
             raise ValueError('embedding dimensions must match')
 
-    def search(self, question, k=3):
+    def search(self, question, k=3, method='dense'):
+        """method: 'dense' (default, unchanged), 'bm25' or 'hybrid' (RRF). Scores
+        reported for non-dense methods are still the dense cosine of that chunk."""
         if not question.strip():
             raise ValueError('question must not be blank')
         if type(k) is not int or not 1 <= k <= 20:
@@ -87,8 +89,14 @@ class Index:
         query = unit(query_vectors[0])
         if len(query) != self.dimension:
             raise ValueError('query embedding dimension does not match index')
-        ranked = sorted(enumerate(self.vectors),
-                        key=lambda pair: (-sum(a*b for a, b in zip(query, pair[1])), pair[0]))
+        if method == 'dense':
+            ranked = sorted(enumerate(self.vectors),
+                            key=lambda pair: (-sum(a*b for a, b in zip(query, pair[1])), pair[0]))
+        else:
+            from .hybrid import HybridRanker
+            if getattr(self, '_ranker', None) is None:
+                self._ranker = HybridRanker([c.text for c in self.chunks], self.vectors)
+            ranked = [(i, self.vectors[i]) for i in self._ranker.order(question, query, method, depth=max(k, 100))]
         result = []
         for i, v in ranked[:k]:
             c = self.chunks[i]

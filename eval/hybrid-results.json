@@ -1,0 +1,35 @@
+{
+  "corpus_sha256": {
+    "1706.03762": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+    "1810.04805": "5692a5514787a8c6727b4ff3b726a3385798bc68e12138d1d4af83947e2acf6e",
+    "2005.11401": "23e3249e9a1e75418d82efecab0ea8c4d033b89c93742f63208d47ce01f21233",
+    "2210.03629": "f285b0971ae4a790e402fb93966bed3adde2cf0a04977d08b2b40d6ab0cace69"
+  },
+  "chunks": 1156,
+  "questions_scored": 31,
+  "questions_skipped_no_evidence_chunk": [],
+  "metrics": {
+    "dense": {
+      "recall@1": 0.161,
+      "recall@3": 0.29,
+      "recall@5": 0.419,
+      "recall@10": 0.548,
+      "mrr": 0.281
+    },
+    "bm25": {
+      "recall@1": 0.194,
+      "recall@3": 0.355,
+      "recall@5": 0.452,
+      "recall@10": 0.677,
+      "mrr": 0.319
+    },
+    "hybrid": {
+      "recall@1": 0.226,
+      "recall@3": 0.387,
+      "recall@5": 0.452,
+      "recall@10": 0.548,
+      "mrr": 0.35
+    }
+  },
+  "note": "Author-labelled, 4 papers, same-document relevance by evidence string. Not a general benchmark."
+}
