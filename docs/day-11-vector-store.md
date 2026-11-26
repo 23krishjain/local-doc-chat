@@ -8,6 +8,6 @@
   a needed speedup yet.
 - Not done: no incremental HNSW insert (full rebuild), no filtering by document
   inside the ANN search, no wiring into the web UI/API, no larger-scale test.
-- Fixed the README test count (124 -> 139).
+- Fixed the README test count (124 -> 156 after this change).
 
 Next: reranker or grounded generation with the existing quote check.
