@@ -1,0 +1,22 @@
+{
+  "documents": 29,
+  "chunks": 10155,
+  "dim": 384,
+  "queries": 300,
+  "machine": "x86_64",
+  "python": "3.10.12",
+  "exact_build_and_load_seconds": 0.15,
+  "hnsw_build_and_load_seconds": 1.43,
+  "hnsw_recall@10_vs_exact": 0.9993,
+  "hnsw_top1_agrees_with_exact": 1.0,
+  "exact_latency_ms": {
+    "median": 0.987,
+    "p95": 1.06
+  },
+  "hnsw_latency_ms": {
+    "median": 0.197,
+    "p95": 0.259
+  },
+  "hnsw_reopen_seconds": 1.22,
+  "reopen_top1_matches": true
+}

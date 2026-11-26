@@ -1,0 +1,3 @@
+# Optional approximate index (Day 11). faiss-cpu is MIT licensed.
+faiss-cpu==1.16.0
+numpy

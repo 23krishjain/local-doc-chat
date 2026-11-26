@@ -154,6 +154,32 @@ best recall@10 here. With 31 questions, differences of one or two questions are
 noise. The set is small and author-labelled; it is not a general benchmark, and
 no reranker, vector database or generated answers exist yet.
 
+## Persistent vector store and HNSW index
+
+`docchat/vectorstore.py` stores vectors and chunk text in SQLite (WAL) and
+searches them with either an exact numpy backend or a FAISS HNSW index
+(`pip install -r requirements-index.txt`). SQLite is the source of truth and the
+index is rebuilt on open. Tested: restart reload, duplicate keys, per-document
+delete, validation, atomic failed adds, tie order, and HNSW agreeing with exact.
+It is a standalone component; the web UI and API still use the JSON cache and
+in-memory search. Wiring them to the store is not done.
+
+Measured by `eval/vectorstore_eval.py` (`eval/vectorstore-results.json`): 29
+public arXiv papers, 10,155 chunks, 384 dimensions, 300 queries, 2 CPU cores.
+
+| | exact (numpy) | HNSW (FAISS, M=32, efSearch=64) |
+|---|---|---|
+| median query | 0.99 ms | 0.20 ms |
+| p95 query | 1.06 ms | 0.26 ms |
+| load into memory | 0.15 s | 1.43 s |
+| recall@10 vs exact | 1.0 (reference) | 0.9993 |
+
+Caveats: the 300 queries are corpus passages, so each one's own chunk is in the
+index; this measures only the approximation, not answer quality. Exact search
+is already about 1 ms at this size, so HNSW saves little here; its advantage
+would matter at much larger sizes, which were not tested. HNSW rebuilds the
+graph on every open (about 1.2 s here) and every add or delete.
+
 ## Verification
 
 ```sh
@@ -163,7 +189,7 @@ python -m unittest discover -s tests -v
 python eval/release_check.py --cache-dir .cache/fastembed
 ```
 
-The full suite has **124 tests**, including real PDF extraction/rendering,
+The full suite has **139 tests**, including real PDF extraction/rendering,
 HTTP/ASGI validation, malformed-cache handling, citation binding, and an actual
 English receipt OCR test when Tesseract is installed. Most retrieval/HTTP
 unit tests use stub embeddings; they do not establish model accuracy. CI
