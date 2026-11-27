@@ -6,6 +6,8 @@
     "2210.03629": "f285b0971ae4a790e402fb93966bed3adde2cf0a04977d08b2b40d6ab0cace69"
   },
   "chunks": 1156,
+  "rerank_model": "Xenova/ms-marco-MiniLM-L-6-v2",
+  "rerank_depth": 30,
   "questions_scored": 31,
   "questions_skipped_no_evidence_chunk": [],
   "metrics": {
@@ -29,6 +31,13 @@
       "recall@5": 0.452,
       "recall@10": 0.548,
       "mrr": 0.35
+    },
+    "hybrid+rerank": {
+      "recall@1": 0.226,
+      "recall@3": 0.484,
+      "recall@5": 0.581,
+      "recall@10": 0.677,
+      "mrr": 0.38
     }
   },
   "note": "Author-labelled, 4 papers, same-document relevance by evidence string. Not a general benchmark."

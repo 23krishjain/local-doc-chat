@@ -149,10 +149,15 @@ over several chunks.
 | BM25 | 0.194 | 0.355 | 0.452 | 0.677 | 0.319 |
 | hybrid (RRF) | 0.226 | 0.387 | 0.452 | 0.548 | 0.350 |
 
-Reading it honestly: hybrid has the best MRR and top-3, but BM25 alone has the
-best recall@10 here. With 31 questions, differences of one or two questions are
-noise. The set is small and author-labelled; it is not a general benchmark, and
-no reranker, vector database or generated answers exist yet.
+| hybrid + cross-encoder rerank (top 30) | 0.226 | 0.484 | 0.581 | 0.677 | 0.380 |
+
+The last row re-scores the 30 hybrid candidates with a local cross-encoder
+(`Xenova/ms-marco-MiniLM-L-6-v2`, Apache-2.0, CPU, `docchat/rerank.py`; run the
+eval with `--rerank`). Reading it honestly: reranking raised MRR (0.350 to 0.380)
+and recall@3/@5, but recall@1 did not move and recall@10 only matches BM25. With
+31 questions, a difference of one or two questions is noise. The set is small
+and author-labelled; it is not a general benchmark. Reranking is not wired into
+the web UI or API, and there is no generated-answer path yet.
 
 ## Persistent vector store and HNSW index
 

@@ -18,6 +18,7 @@ import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from docchat.hybrid import HybridRanker
 from docchat.pdf import chunk_pages, read_pdf
+from docchat.rerank import CrossEncoder, rerank
 from docchat.search import LocalEmbedder, unit
 
 root = Path(__file__).resolve().parents[1]
@@ -44,6 +45,8 @@ def main():
     ap.add_argument('--cache-dir')
     ap.add_argument('--offline', action='store_true')
     ap.add_argument('--out')
+    ap.add_argument('--rerank', action='store_true', help='also score hybrid candidates with a cross-encoder')
+    ap.add_argument('--rerank-depth', type=int, default=30)
     a = ap.parse_args()
     folder = Path(a.download)
     folder.mkdir(parents=True, exist_ok=True)
@@ -62,7 +65,9 @@ def main():
     vectors = [unit(v) for v in emb.embed([c.text for c in chunks])]
     ranker = HybridRanker([c.text for c in chunks], vectors)
     cases = json.loads((root / 'eval/hybrid_cases.json').read_text())
-    per = {m: [] for m in ranker.METHODS}
+    enc = CrossEncoder(a.cache_dir, a.offline) if a.rerank else None
+    methods = list(ranker.METHODS) + (['hybrid+rerank'] if enc else [])
+    per = {m: [] for m in methods}
     skipped = []
     for pid, question, evidence in cases:
         relevant = {i for i, (x, o) in enumerate(zip(texts, owner)) if o == pid and norm(evidence) in x}
@@ -72,11 +77,15 @@ def main():
         qv = unit(emb.embed([question])[0])
         for m in ranker.METHODS:
             per[m].append(metrics(ranker.order(question, qv, m), relevant))
+        if enc:
+            cand = ranker.order(question, qv, 'hybrid', depth=a.rerank_depth)
+            order = rerank(question, [(i, chunks[i].text) for i in cand], enc.scores)
+            per['hybrid+rerank'].append(metrics(order, relevant))
     summary = {m: {k: round(mean([r[k] for r in rows]), 3) for k in rows[0]} | {'mrr': round(mean([r['rr'] for r in rows]), 3)}
                for m, rows in per.items()}
     for v in summary.values():
         v.pop('rr')
-    result = {'corpus_sha256': hashes, 'chunks': len(chunks), 'questions_scored': len(per['dense']),
+    result = {'corpus_sha256': hashes, 'chunks': len(chunks), 'rerank_model': enc.model_name if enc else None, 'rerank_depth': a.rerank_depth if enc else None, 'questions_scored': len(per['dense']),
               'questions_skipped_no_evidence_chunk': skipped, 'metrics': summary,
               'note': 'Author-labelled, 4 papers, same-document relevance by evidence string. Not a general benchmark.'}
     text = json.dumps(result, indent=2)
