@@ -194,7 +194,7 @@ python -m unittest discover -s tests -v
 python eval/release_check.py --cache-dir .cache/fastembed
 ```
 
-The full suite has **156 tests**, including real PDF extraction/rendering,
+The full suite has **163 tests** (one needs a cached reranker model and is skipped unless `DOCCHAT_MODEL_CACHE` is set), including real PDF extraction/rendering,
 HTTP/ASGI validation, malformed-cache handling, citation binding, and an actual
 English receipt OCR test when Tesseract is installed. Most retrieval/HTTP
 unit tests use stub embeddings; they do not establish model accuracy. CI
